@@ -1,26 +1,16 @@
 // android/build.gradle
 
-// based on:
-//
-// * https://github.com/facebook/react-native/blob/0.60-stable/template/android/build.gradle
-//   original location:
-//   - https://github.com/facebook/react-native/blob/0.58-stable/local-cli/templates/HelloWorld/android/build.gradle
-//
-// * https://github.com/facebook/react-native/blob/0.60-stable/template/android/app/build.gradle
-//   original location:
-//   - https://github.com/facebook/react-native/blob/0.58-stable/local-cli/templates/HelloWorld/android/app/build.gradle
+// Modernized build configuration for React Native Static Server
+// Requires Gradle 9.0+ and Android Gradle Plugin 8.0+
 
-def DEFAULT_COMPILE_SDK_VERSION = 28
-def DEFAULT_BUILD_TOOLS_VERSION = '28.0.3'
-def DEFAULT_MIN_SDK_VERSION = 16
-def DEFAULT_TARGET_SDK_VERSION = 28
+def DEFAULT_BUILD_TOOLS_VERSION = '35.0.0'
+def DEFAULT_MIN_SDK = 24
+def DEFAULT_COMPILE_SDK = 35
+def DEFAULT_TARGET_SDK = 35
 
 def safeExtGet(prop, fallback) {
     rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
 }
-
-apply plugin: 'com.android.library'
-apply plugin: 'maven'
 
 buildscript {
     // The Android Gradle plugin is only required when opening the android folder stand-alone.
@@ -30,7 +20,7 @@ buildscript {
     if (project == rootProject) {
         repositories {
             google()
-            jcenter()
+            mavenCentral()
         }
         dependencies {
             classpath 'com.android.tools.build:gradle:3.4.1'
@@ -39,18 +29,21 @@ buildscript {
 }
 
 apply plugin: 'com.android.library'
-apply plugin: 'maven'
 
 android {
-    compileSdkVersion safeExtGet('compileSdkVersion', DEFAULT_COMPILE_SDK_VERSION)
+    // Use compileSdk (required by AGP 8.0+), but support both naming conventions in ext
+    compileSdk safeExtGet('compileSdk', safeExtGet('compileSdkVersion', DEFAULT_COMPILE_SDK))
     buildToolsVersion safeExtGet('buildToolsVersion', DEFAULT_BUILD_TOOLS_VERSION)
+    
     defaultConfig {
-        minSdkVersion safeExtGet('minSdkVersion', DEFAULT_MIN_SDK_VERSION)
-        targetSdkVersion safeExtGet('targetSdkVersion', DEFAULT_TARGET_SDK_VERSION)
+        // Use minSdk (required by AGP 8.0+), but support both naming conventions in ext
+        minSdk safeExtGet('minSdk', safeExtGet('minSdkVersion', DEFAULT_MIN_SDK))
+        // Use targetSdk (required by AGP 8.0+), but support both naming conventions in ext
+        targetSdk safeExtGet('targetSdk', safeExtGet('targetSdkVersion', DEFAULT_TARGET_SDK))
         versionCode 1
         versionName "1.0"
     }
-    lintOptions {
+    lint {
         abortOnError false
     }
 }
@@ -67,7 +60,7 @@ repositories {
         url "$rootDir/../node_modules/jsc-android/dist"
     }
     google()
-    jcenter()
+    mavenCentral()
 }
 
 dependencies {
@@ -106,22 +99,29 @@ def configureReactNativePom(def pom) {
 }
 
 afterEvaluate { project ->
-    // some Gradle build hooks ref:
+    // Modernized Gradle build hooks
+    // References:
     // https://www.oreilly.com/library/view/gradle-beyond-the/9781449373801/ch03.html
+    // https://developer.android.com/studio/releases/gradle-plugin
+    
     task androidJavadoc(type: Javadoc) {
         source = android.sourceSets.main.java.srcDirs
         classpath += files(android.bootClasspath)
-        classpath += files(project.getConfigurations().getByName('compile').asList())
+        // Use implementation configuration (compile is deprecated in Gradle 7.0+)
+        // Enable resolution for implementation configuration to use in classpath
+        configurations.implementation.setCanBeResolved(true)
+        classpath += files(configurations.implementation)
         include '**/*.java'
     }
 
     task androidJavadocJar(type: Jar, dependsOn: androidJavadoc) {
-        classifier = 'javadoc'
+        archiveClassifier.set('javadoc')
+        // Javadoc task uses destinationDir (File property) - this is the standard property
         from androidJavadoc.destinationDir
     }
 
     task androidSourcesJar(type: Jar) {
-        classifier = 'sources'
+        archiveClassifier.set('sources')
         from android.sourceSets.main.java.srcDirs
         include '**/*.java'
     }
@@ -131,7 +131,7 @@ afterEvaluate { project ->
         def javaCompileTask = variant.javaCompileProvider.get()
 
         task "jar${name}"(type: Jar, dependsOn: javaCompileTask) {
-            from javaCompileTask.destinationDir
+            from javaCompileTask.destinationDirectory
         }
     }
 
@@ -140,12 +140,7 @@ afterEvaluate { project ->
         archives androidJavadocJar
     }
 
-    task installArchives(type: Upload) {
-        configuration = configurations.archives
-        repositories.mavenDeployer {
-            // Deploy to react-native-event-bridge/maven, ready to publish to npm
-            repository url: "file://${projectDir}/../android/maven"
-            configureReactNativePom pom
-        }
-    }
+    // Note: Maven plugin was removed in Gradle 9.0
+    // The installArchives task is not needed for the library to function as a dependency
+    // If you need local maven publishing, consider using maven-publish plugin instead
 }
